@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "forceConsistentCasingInFileNames": true,
+    "importHelpers": true,
+    "removeComments": true,
+    "target": "es6",
+    "module": "commonjs",
+    "outDir": "./dist/",
+    "strict": true,
+    "sourceMap": true,
+    "typeRoots": ["node_modules/@types"],
+    "esModuleInterop": true
+  },
+  "exclude": ["dist", "node_modules"]
+}
