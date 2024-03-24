@@ -15,7 +15,7 @@ import {
 import {updateDepthObject, updatePriceObject} from './helpers';
 import {
     JWT,
-    Message,
+    Message, NordnetDailyStockData,
     NordnetDepthObject,
     NordnetIndicatorObject,
     NordnetNewsObject,
@@ -25,7 +25,14 @@ import {
     SubscriptionType,
 } from './types';
 import {IndicatorInfo, TickerInfo} from "../../utils/types";
-import {getFilteredTickerList, getIndicatorList, isOutsideTradingHours} from "../../utils/helpers";
+import {
+    convertToTicker,
+    getFilteredTickerList,
+    getIndicatorList,
+    getTreadTickerList,
+    isOutsideTradingHours
+} from "../../utils/helpers";
+import {io} from "socket.io-client";
 
 export class NordnetScraper {
     private DEPTHS_CACHE_TICKERLIST: NordnetDepthObject[];
@@ -42,6 +49,7 @@ export class NordnetScraper {
     private nextCookie: any;
     private csrf: any;
     private TICK_LIST: any;
+    private socket: any;
 
     private HEADERS_BASE: any;
     private client: any;
@@ -80,10 +88,15 @@ export class NordnetScraper {
             headers: this.HEADERS_BASE,
             withCredentials: true,
         });
+        this.socket = io('http://localhost:3001');
     }
 
     public async onMessage(msg: any) {
         const message = JSON.parse(msg.data) as Message;
+        this.socket.emit('message', JSON.stringify(message.data));
+        console.log(JSON.stringify(message.data))
+
+
         if (message.type == SubscriptionType.DEPTH) {
             const latestDepth = this.retrieveDepthFromCache(
                 message.data as NordnetDepthObject
@@ -316,6 +329,76 @@ export class NordnetScraper {
         await this.getAnonLoginCookies();
         await this.getLoginCookies()
         await this.loginAsUser();
+    }
+
+    public async getStockData() {
+        let stockData: NordnetDailyStockData[] = [];
+        let offset = 0;
+        let totalHits = -1;
+        while (totalHits !== offset) {
+            const response = await this.client.get(
+                process.env.OSE_STOCKS_URL +
+                `?apply_filters=exchange_country=NO&limit=100&offset=${offset}`,
+                {},
+                {
+                    headers: this.HEADERS_BASE,
+                    withCredentials: true,
+                }
+            );
+            logger.info(
+                `Received ${response.data.rows} number of stocks out of ${response.data.total_hits} with offset ${offset}`
+            );
+            totalHits = response.data.total_hits;
+            stockData = [...stockData, ...response.data.results];
+            offset = offset + response.data.rows;
+        }
+
+        if (!stockData) {
+            logger.error(`Did not find any stock ids in db`);
+            return [];
+        }
+
+        let tickerList: TickerInfo[] = convertToTicker(stockData);
+
+        tickerList = getTreadTickerList(tickerList);
+
+        this.TICKER_INFO_LIST_CACHE = tickerList;
+        return tickerList;
+    }
+
+    public async subscribeTicker(ticker: string) {
+        logger.info(`Connecting to websocket at timestamp ${new Date()}`);
+
+        this.sock = this.sock ?? new WebSocket(process.env.WEBSOCKET_URL ?? '', ['NEXT'], {
+            origin: process.env.ORIGIN_URL,
+            headers: {
+                headers: this.HEADERS_BASE,
+                Cookie: this.client.defaults.headers.cookie,
+            },
+        });
+
+        const tickerInfo = this.TICKER_INFO_LIST_CACHE.find((tickerInfo) => tickerInfo.symbol === ticker);
+
+        if(!tickerInfo) {
+            logger.error("Could not find tickerInfo for ticker " + ticker)
+            return;
+        }
+
+        this.sock.onopen = async () => {
+            logger.info(
+                `Subscribing to ${ticker} stocks`
+            );
+
+            await this.subscribe(
+                tickerInfo,
+                TICKERLIST_SUBSCRIBE_DEPTH,
+                TICKERLIST_SUBSCRIBE_PRICE,
+                TICKERLIST_SUBSCRIBE_TRADE,
+                TICKERLIST_SUBSCRIBE_TRADING_STATUS
+            );
+        };
+
+        return await this.pump();
     }
 
     public async connect() {

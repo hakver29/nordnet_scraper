@@ -137,8 +137,6 @@ export class NordnetAPIWrapper {
     }
     return stockData;
   }
-
-  // Doesn't wor
 }
 
 export default NordnetAPIWrapper;

@@ -37,7 +37,38 @@ export async function getFilteredTickerList(
   }
 }
 
-function convertToTicker(dailyStockData: NordnetDailyStockData[]): TickerInfo[] {
+export async function getTickerList(
+    filterMinVolume: boolean,
+    filterMaxVolume: boolean,
+): Promise<TickerInfo[]> {
+  try {
+    const nordnet = await createNordnetSession();
+    let dailyStockDataTickerList = await nordnet.getStockData();
+    dailyStockDataTickerList = filterDate(dailyStockDataTickerList);
+    dailyStockDataTickerList = filterVolume(
+        dailyStockDataTickerList,
+        filterMinVolume,
+        filterMaxVolume
+    );
+
+    if (!dailyStockDataTickerList) {
+      logger.error(`Did not find any stock ids in db`);
+      return [];
+    }
+
+    let tickerList: TickerInfo[] = convertToTicker(dailyStockDataTickerList);
+
+    tickerList = getTreadTickerList(tickerList);
+
+    // logger.info(`Returning filtered tickerList of ${tickerList.length}`);
+    return tickerList;
+  } catch (error) {
+    logger.error(`Failed to get stock-list: ${error}`);
+    return [];
+  }
+}
+
+export function convertToTicker(dailyStockData: NordnetDailyStockData[]): TickerInfo[] {
   // eslint-disable-next-line @typescript-eslint/ban-ts-comment
   // @ts-ignore
   const list: TickerInfo[] = dailyStockData.map((obj) => {
