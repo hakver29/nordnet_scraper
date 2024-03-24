@@ -9,17 +9,20 @@ const port = 3002;
 
 // Middleware to parse JSON
 app.use(express.json());
-const client = new NordnetScraper();
+let client = new NordnetScraper();
 
 // Endpoint to get all users
 app.get('/authenticate', (req: any, res: any) => {
+    client = new NordnetScraper();
+    res.header("Access-Control-Allow-Origin", "*");
     client.newSession()
     return res.status(200).json({ message: 'Authenticated' });
 });
 
 app.get('/stocks', async (req: any, res: any) => {
+    res.header("Access-Control-Allow-Origin", "*");
     const tickerInfo = await client.getStockData()
-    return res.status(200).json({message: `Got list with ${tickerInfo.length} stocks`});
+    return res.status(200).json(tickerInfo);
 });
 
 app.get('/subscribe/:ticker', async (req: any, res: any) => {
